@@ -1,3 +1,3 @@
 # Employee-churn-prediction
 
-live server :-  https://employee-churn-prediction-1zu7.onrender.com/predict
+Live server Link :-  https://employee-churn-prediction-1zu7.onrender.com/predict
