@@ -1,401 +1,330 @@
-
-import os
 import pickle
 import numpy as np
-
-from flask import Flask, request, render_template_string
+from flask import Flask, render_template_string, request
 
 app = Flask(__name__)
 
-# Load the trained model
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "naive.pkl")
+# Load the trained Naive Bayes model[cite: 1]
+with open('naive.pkl', 'rb') as f:
+    model = pickle.load(f)
 
-with open(MODEL_PATH, "rb") as file:
-    model = pickle.load(file)
-
-
-# HTML + CSS + Flask template in one file
-HTML = """
+HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Employee Attrition Predictor</title>
-
+    <title>Employee Attrition Prediction Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg-gradient: radial-gradient(circle at top left, #312e81, #1e1b4b, #0f172a);
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --text-main: #1e293b;
+            --text-muted: #64748b;
         }
-
+        
         body {
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #eef2ff, #f8fafc);
-            color: #172033;
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-main);
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             min-height: 100vh;
-            padding: 35px 16px;
         }
 
-        .container {
-            max-width: 1000px;
-            margin: auto;
+        .interactive-frame-container {
+            background: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(16px);
+            width: 100%;
+            max-width: 700px;
+            padding: 40px;
+            box-sizing: border-box;
+            position: relative;
+            overflow: hidden;
+            animation: fadeIn 0.6s ease-out;
         }
 
-        .header {
-            text-align: center;
-            margin-bottom: 28px;
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .logo {
-            display: inline-block;
-            background: #e0e7ff;
-            color: #4338ca;
-            padding: 10px 16px;
+        .interactive-frame-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
+        }
+
+        .model-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #e2e8f0;
+            margin-bottom: 30px;
+        }
+
+        .model-header h2 {
+            margin: 0;
+            color: #0f172a;
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+        }
+
+        .model-badge {
+            background: #eef2ff;
+            color: #4f46e5;
+            padding: 6px 14px;
             border-radius: 30px;
-            font-size: 13px;
-            font-weight: bold;
-            margin-bottom: 18px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: inset 0 0 0 1px #c7d2fe;
         }
 
-        h1 {
-            font-size: clamp(28px, 5vw, 42px);
-            letter-spacing: -1px;
-            margin-bottom: 12px;
+        .model-badge::before {
+            content: '';
+            width: 7px;
+            height: 7px;
+            background: #4f46e5;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
         }
 
-        .subtitle {
-            color: #64748b;
-            line-height: 1.7;
-            max-width: 620px;
-            margin: auto;
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 0 5px rgba(99, 102, 241, 0.2); }
+            100% { transform: scale(0.95); opacity: 0.8; }
         }
 
-        .card {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 22px;
-            padding: 32px;
-            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.07);
-        }
-
-        .section-title {
-            font-size: 21px;
-            margin-bottom: 8px;
-        }
-
-        .section-description {
-            color: #64748b;
-            font-size: 14px;
-            line-height: 1.6;
-            margin-bottom: 28px;
-        }
-
+        /* Modern 2-Column Grid Layout */
         .form-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 22px;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
         }
 
-        .field {
-            display: flex;
-            flex-direction: column;
-            gap: 9px;
-        }
-
-        label {
-            font-size: 14px;
-            font-weight: 600;
-            color: #334155;
-        }
-
-        input, select {
-            width: 100%;
-            padding: 14px;
-            border: 1px solid #cbd5e1;
-            border-radius: 11px;
-            background: #fff;
-            color: #172033;
-            font-size: 15px;
-            outline: none;
-            transition: 0.2s;
-        }
-
-        input:focus, select:focus {
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px #6366f120;
-        }
-
-        .hint {
-            font-size: 12px;
-            color: #94a3b8;
-        }
-
-        .submit-btn {
-            width: 100%;
-            margin-top: 28px;
-            padding: 16px;
-            border: none;
-            border-radius: 12px;
-            color: white;
-            background: linear-gradient(135deg, #4f46e5, #7c3aed);
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .submit-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px #4f46e540;
-        }
-
-        .result {
-            margin-top: 25px;
-            padding: 23px;
-            border-radius: 15px;
-            background: #f1f5f9;
-            border: 1px solid #e2e8f0;
-            text-align: center;
-        }
-
-        .result h2 {
-            font-size: 23px;
-            margin-bottom: 10px;
-        }
-
-        .result p {
-            line-height: 1.7;
-            color: #475569;
-        }
-
-        .result.stay {
-            background: #ecfdf5;
-            border-color: #a7f3d0;
-        }
-
-        .result.leave {
-            background: #fff1f2;
-            border-color: #fecdd3;
-        }
-
-        .error {
-            background: #fff7ed;
-            color: #9a3412;
-            border: 1px solid #fed7aa;
-            border-radius: 10px;
-            padding: 14px;
-            margin-top: 20px;
-            line-height: 1.6;
-        }
-
-        .footer {
-            text-align: center;
-            color: #94a3b8;
-            font-size: 12px;
-            margin-top: 25px;
-            line-height: 1.7;
-        }
-
-        @media (max-width: 650px) {
-            body {
-                padding: 22px 12px;
-            }
-
-            .card {
-                padding: 22px 17px;
-            }
-
+        @media (max-width: 600px) {
             .form-grid {
                 grid-template-columns: 1fr;
             }
         }
+
+        .interactive-input-group {
+            position: relative;
+        }
+
+        .interactive-input-group label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .interactive-input-group input,
+        .interactive-input-group select {
+            width: 100%;
+            padding: 12px 16px;
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 14px;
+            color: var(--text-main);
+            transition: all 0.25s ease;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .interactive-input-group input:hover,
+        .interactive-input-group select:hover {
+            border-color: #cbd5e1;
+        }
+
+        .interactive-input-group input:focus,
+        .interactive-input-group select:focus {
+            border-color: var(--primary);
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+            background: #ffffff;
+        }
+
+        .full-width {
+            grid-column: span 2;
+        }
+
+        @media (max-width: 600px) {
+            .full-width {
+                grid-column: span 1;
+            }
+        }
+
+        .interactive-submit-btn {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+            border: none;
+            width: 100%;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+            transition: all 0.25s ease;
+            margin-top: 25px;
+        }
+
+        .interactive-submit-btn:hover {
+            background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .prediction-output-card {
+            margin-top: 25px;
+            padding: 18px;
+            border-radius: 14px;
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            color: #065f46;
+            text-align: center;
+            font-weight: 600;
+            font-size: 16px;
+            animation: slideUp 0.3s ease-out forwards;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
-
 <body>
-<div class="container">
-
-    <header class="header">
-        <div class="logo">MACHINE LEARNING PROJECT</div>
-        <h1>Employee Attrition Predictor</h1>
-        <p class="subtitle">
-            Enter employee details to get a prediction from your
-            trained Gaussian Naive Bayes model.
-        </p>
-    </header>
-
-    <main class="card">
-        <h2 class="section-title">Employee Information</h2>
-        <p class="section-description">
-            Complete all eight fields and click the prediction button.
-        </p>
-
-        <form method="POST">
+    <div class="interactive-frame-container">
+        <div class="model-header">
+            <h2>Employee Predictor</h2>
+            <span class="model-badge">Naive Bayes v1.0</span>
+        </div>
+        
+        <form method="POST" action="/predict">
             <div class="form-grid">
-
-                <div class="field">
-                    <label for="education">Education</label>
-                    <select name="education" id="education" required>
-                        <option value="">Select education</option>
-                        <option value="1">Bachelors</option>
-                        <option value="2">Masters</option>
-                        <option value="3">PHD</option>
+                <div class="interactive-input-group">
+                    <label>Education</label>
+                    <select name="Education" required>
+                        <option value="0">Bachelors</option>
+                        <option value="1">Masters</option>
+                        <option value="2">PHD</option>
                     </select>
-                    <span class="hint">Encoded category</span>
                 </div>
-
-                <div class="field">
-                    <label for="joining_year">Joining Year</label>
-                    <input type="number" id="joining_year"
-                           name="joining_year" min="2000" max="2035"
-                           placeholder="e.g. 2022" required>
+                
+                <div class="interactive-input-group">
+                    <label>Joining Year</label>
+                    <input type="number" name="JoiningYear" placeholder="e.g., 2018" required>
                 </div>
-
-                <div class="field">
-                    <label for="city">City</label>
-                    <select name="city" id="city" required>
-                        <option value="">Select city</option>
-                        <option value="1">Bangalore</option>
+                
+                <div class="interactive-input-group">
+                    <label>City</label>
+                    <select name="City" required>
+                        <option value="0">Bangalore</option>
+                        <option value="1">Pune</option>
                         <option value="2">New Delhi</option>
-                        <option value="3">Pune</option>
                     </select>
                 </div>
-
-                <div class="field">
-                    <label for="payment_tier">Payment Tier</label>
-                    <select name="payment_tier" id="payment_tier" required>
-                        <option value="">Select tier</option>
+                
+                <div class="interactive-input-group">
+                    <label>Payment Tier</label>
+                    <select name="PaymentTier" required>
                         <option value="1">Tier 1</option>
                         <option value="2">Tier 2</option>
                         <option value="3">Tier 3</option>
                     </select>
                 </div>
-
-                <div class="field">
-                    <label for="age">Age</label>
-                    <input type="number" id="age" name="age"
-                           min="18" max="100" placeholder="e.g. 28" required>
+                
+                <div class="interactive-input-group">
+                    <label>Age</label>
+                    <input type="number" name="Age" placeholder="e.g., 28" required>
                 </div>
-
-                <div class="field">
-                    <label for="gender">Gender</label>
-                    <select name="gender" id="gender" required>
-                        <option value="">Select gender</option>
-                        <option value="0">Female</option>
-                        <option value="1">Male</option>
+                
+                <div class="interactive-input-group">
+                    <label>Gender</label>
+                    <select name="Gender" required>
+                        <option value="0">Male</option>
+                        <option value="1">Female</option>
                     </select>
                 </div>
-
-                <div class="field">
-                    <label for="ever_benched">Ever Benched?</label>
-                    <select name="ever_benched" id="ever_benched" required>
-                        <option value="">Select option</option>
+                
+                <div class="interactive-input-group">
+                    <label>Ever Benched</label>
+                    <select name="EverBenched" required>
                         <option value="0">No</option>
                         <option value="1">Yes</option>
                     </select>
                 </div>
-
-                <div class="field">
-                    <label for="experience">Experience in Current Domain</label>
-                    <input type="number" id="experience" name="experience"
-                           min="0" max="60" placeholder="Years of experience"
-                           required>
+                
+                <div class="interactive-input-group">
+                    <label>Experience in Domain</label>
+                    <input type="number" name="ExperienceInCurrentDomain" placeholder="e.g., 3" required>
                 </div>
-
             </div>
-
-            <button class="submit-btn" type="submit">
-                Predict Employee Attrition →
-            </button>
+            
+            <button type="submit" class="interactive-submit-btn">Run Prediction Analysis</button>
         </form>
 
         {% if prediction is not none %}
-            <div class="result {{ 'leave' if prediction == 1 else 'stay' }}">
-                <h2>
-                    {% if prediction == 1 %}
-                        Attrition Predicted
-                    {% else %}
-                        Retention Predicted
-                    {% endif %}
-                </h2>
-                <p>
-                    {% if prediction == 1 %}
-                        The model predicts that this employee may leave.
-                    {% else %}
-                        The model predicts that this employee may stay.
-                    {% endif %}
-                </p>
-                <p><strong>Predicted class:</strong> {{ prediction }}</p>
-            </div>
+        <div class="prediction-output-card">
+            ⚡ Prediction Result: {{ prediction }}
+        </div>
         {% endif %}
-
-        {% if error %}
-            <div class="error">{{ error }}</div>
-        {% endif %}
-    </main>
-
-    <footer class="footer">
-        Employee Attrition Prediction · Flask + Machine Learning<br>
-        Predictions are estimates and should not be used as the sole basis
-        for employment decisions.
-    </footer>
-
-</div>
+    </div>
 </body>
 </html>
 """
 
-
-@app.route("/", methods=["GET", "POST"])
+@app.route('/')
 def home():
-    prediction = None
-    error = None
+    return render_template_string(HTML_TEMPLATE, prediction=None)
 
-    if request.method == "POST":
-        try:
-            education = int(request.form["education"])
-            joining_year = int(request.form["joining_year"])
-            city = int(request.form["city"])
-            payment_tier = int(request.form["payment_tier"])
-            age = int(request.form["age"])
-            gender = int(request.form["gender"])
-            ever_benched = int(request.form["ever_benched"])
-            experience = int(request.form["experience"])
+@app.route('/predict', methods=['POST'])
+def predict():
+    try:
+        features = [
+            float(request.form['Education']),
+            float(request.form['JoiningYear']),
+            float(request.form['City']),
+            float(request.form['PaymentTier']),
+            float(request.form['Age']),
+            float(request.form['Gender']),
+            float(request.form['EverBenched']),
+            float(request.form['ExperienceInCurrentDomain'])
+        ]
+        
+        final_features = np.array([features])
+        prediction = model.predict(final_features)[0]
+        
+        result_text = f"Will Leave / Positive Class ({prediction})" if prediction == 1 else f"Will Stay / Negative Class ({prediction})"
+        
+        return render_template_string(HTML_TEMPLATE, prediction=result_text)
+    except Exception as e:
+        return render_template_string(HTML_TEMPLATE, prediction=f"Error: {str(e)}")
 
-            # Keep the feature order consistent with model training.
-            features = np.array([[
-                education,
-                joining_year,
-                city,
-                payment_tier,
-                age,
-                gender,
-                ever_benched,
-                experience
-            ]])
-
-            prediction = int(model.predict(features)[0])
-
-        except (ValueError, KeyError, TypeError) as exc:
-            error = "Please enter valid values in all fields."
-        except Exception:
-            error = (
-                "Prediction failed. Check that the model expects "
-                "these eight features in this exact order."
-            )
-
-    return render_template_string(
-        HTML,
-        prediction=prediction,
-        error=error
-    )
-
-
-if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000)),
-        debug=False
-    )
+if __name__ == '__main__':
+    app.run(debug=True)
